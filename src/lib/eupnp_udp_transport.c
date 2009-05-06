@@ -25,6 +25,7 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <arpa/inet.h>
 
 #include <eupnp_error.h>
@@ -36,7 +37,7 @@
  */
 
 static Eupnp_UDP_Datagram *
-eupnp_udp_datagram_new(const char *host, int port, char *data)
+eupnp_udp_datagram_new(const char *host, int port, char *data, size_t data_len)
 {
    Eupnp_UDP_Datagram *datagram;
 
@@ -52,7 +53,15 @@ eupnp_udp_datagram_new(const char *host, int port, char *data)
    if (data)
       datagram->data = data;
    else
-      datagram->data = calloc(1, EUPNP_UDP_PACKET_SIZE);
+     {
+	datagram->data = calloc(1, sizeof(char) * (data_len + 1));
+	if (!datagram->data)
+	  {
+	     eina_error_set(EINA_ERROR_OUT_OF_MEMORY);
+	     ERROR("could not allocate buffer for new datagram.\n");
+	     return NULL;
+	  }
+     }
    if (host)
       datagram->host = host;
    if (port)
@@ -157,12 +166,22 @@ Eupnp_UDP_Datagram *
 eupnp_udp_transport_recv(Eupnp_UDP_Transport *s)
 {
    Eupnp_UDP_Datagram *d;
+   int data_len;
 
-   d = eupnp_udp_datagram_new("", 0, NULL);
+   if (!ioctl(s->socket, FIONREAD, &data_len))
+      DEBUG("Bytes available for reading: %d\n", data_len);
+   else
+     {
+	// Don't know how many bytes are available, expect EUPNP_UDP_PACKET_LEN.
+	DEBUG("could not determine how many bytes available.\n");
+	data_len = EUPNP_UDP_PACKET_LEN;
+     }
+
+   d = eupnp_udp_datagram_new(NULL, 0, NULL, data_len);
 
    if (!d) return NULL;
 
-   recv(s->socket, d->data, EUPNP_UDP_PACKET_SIZE, 0);
+   recv(s->socket, d->data, data_len, 0);
 
    return d;
 }
@@ -171,13 +190,24 @@ Eupnp_UDP_Datagram *
 eupnp_udp_transport_recvfrom(Eupnp_UDP_Transport *s)
 {
    Eupnp_UDP_Datagram *d;
+   int data_len;
 
-   d = eupnp_udp_datagram_new("", 0, NULL);
+   if (!ioctl(s->socket, FIONREAD, &data_len))
+      DEBUG("ioctl says %d bytes available for reading\n", data_len);
+   else
+     {
+	// Don't know how many bytes are available, expect EUPNP_UDP_PACKET_LEN.
+	DEBUG("could not determine how many bytes available.\n");
+	data_len = EUPNP_UDP_PACKET_LEN;
+     }
+
+   d = eupnp_udp_datagram_new(NULL, 0, NULL, data_len);
 
    if (!d) return NULL;
 
-   recvfrom(s->socket, d->data, EUPNP_UDP_PACKET_SIZE, 0,
+   recvfrom(s->socket, d->data, data_len, 0,
 	    (struct sockaddr *)&(s->in_addr), &(s->in_addr_len));
+
    d->host = inet_ntoa(s->in_addr.sin_addr);
    d->port = ntohs(s->in_addr.sin_port);
 

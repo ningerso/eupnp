@@ -28,7 +28,7 @@
 #define _EUPNP_UDP_TRANSPORT_H
 
 
-#define EUPNP_UDP_PACKET_SIZE 5000*sizeof(char)
+#define EUPNP_UDP_PACKET_LEN 5000
 
 typedef struct _Eupnp_UDP_Transport Eupnp_UDP_Transport;
 typedef struct _Eupnp_UDP_Datagram Eupnp_UDP_Datagram;
