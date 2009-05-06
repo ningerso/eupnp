@@ -58,11 +58,11 @@ eupnp_ssdp_http_header_new(const char *key_start, int key_len, const char *value
    h = malloc(sizeof(Eupnp_HTTP_Header) + key_len + 1 + value_len + 1);
 
    if (!h)
-    {
-       eina_error_set(EINA_ERROR_OUT_OF_MEMORY);
-       ERROR("header alloc error.\n");
-       return NULL;
-    }
+     {
+	eina_error_set(EINA_ERROR_OUT_OF_MEMORY);
+	ERROR("header alloc error.\n");
+	return NULL;
+     }
 
    h->key = (char *)h + sizeof(Eupnp_HTTP_Header);
    h->value = (char *)h + sizeof(Eupnp_HTTP_Header) + sizeof(char)*(key_len + 1);
@@ -83,27 +83,27 @@ eupnp_ssdp_http_header_free(Eupnp_HTTP_Header *h)
 static Eina_Bool
 eupnp_ssdp_http_message_add_header(Eupnp_HTTP_Message *m, const char *key_start, int key_len, const char *value_start, int value_len)
 {
-	Eupnp_HTTP_Header *h;
+   Eupnp_HTTP_Header *h;
 
-	h = eupnp_ssdp_http_header_new(key_start, key_len, value_start, value_len);
+   h = eupnp_ssdp_http_header_new(key_start, key_len, value_start, value_len);
 
-	if (!h)
-	  {
-	     eina_error_set(EINA_ERROR_OUT_OF_MEMORY);
-	     ERROR("header alloc error.\n");
-	     return EINA_FALSE;
-	  }
+   if (!h)
+     {
+	eina_error_set(EINA_ERROR_OUT_OF_MEMORY);
+	ERROR("header alloc error.\n");
+	return EINA_FALSE;
+     }
 
-	DEBUG("Header parsed: %s: %s\n", h->key, h->value);
+   DEBUG("Header parsed: %s: %s\n", h->key, h->value);
 
-	if (!eina_array_push(m->headers, h))
-	  {
-	      WARN("incomplete headers\n");
-	      eupnp_ssdp_http_header_free(h);
-	      return EINA_FALSE;
-	  }
+   if (!eina_array_push(m->headers, h))
+     {
+	WARN("incomplete headers\n");
+	eupnp_ssdp_http_header_free(h);
+	return EINA_FALSE;
+     }
 
-	return EINA_TRUE;
+   return EINA_TRUE;
 }
 
 static Eupnp_HTTP_Message *
@@ -151,9 +151,7 @@ eupnp_ssdp_http_message_free(Eupnp_HTTP_Message *m)
 	int i;
 
 	EINA_ARRAY_ITER_NEXT(m->headers, i, h, it)
-	  {
-	     eupnp_ssdp_http_header_free(h);
-	  }
+	   eupnp_ssdp_http_header_free(h);
 
 	eina_array_free(m->headers);
      }
