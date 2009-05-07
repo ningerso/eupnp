@@ -37,14 +37,21 @@ struct _Eupnp_HTTP_Header {
    const char *value;
 };
 
-struct _Eupnp_HTTP_Message {
+struct _Eupnp_HTTP_Request {
    Eina_Array *headers;
    const char *method;
    const char *http_version;
-   const char *resource;
+   const char *uri;
 };
 
-typedef struct _Eupnp_HTTP_Message Eupnp_HTTP_Message;
+struct _Eupnp_HTTP_Response {
+   const char *http_version;
+   int status_code;
+   const char *reason_phrase;
+};
+
+typedef struct _Eupnp_HTTP_Request Eupnp_HTTP_Request;
+typedef struct _Eupnp_HTTP_Response Eupnp_HTTP_Response;
 typedef struct _Eupnp_HTTP_Header Eupnp_HTTP_Header;
 
 static int _eupnp_ssdp_main_count = 0;
@@ -81,7 +88,7 @@ eupnp_ssdp_http_header_free(Eupnp_HTTP_Header *h)
 }
 
 static Eina_Bool
-eupnp_ssdp_http_message_add_header(Eupnp_HTTP_Message *m, const char *key_start, int key_len, const char *value_start, int value_len)
+eupnp_ssdp_http_request_header_add(Eupnp_HTTP_Request *m, const char *key_start, int key_len, const char *value_start, int value_len)
 {
    Eupnp_HTTP_Header *h;
 
@@ -106,11 +113,11 @@ eupnp_ssdp_http_message_add_header(Eupnp_HTTP_Message *m, const char *key_start,
    return EINA_TRUE;
 }
 
-static Eupnp_HTTP_Message *
-eupnp_ssdp_http_message_new(const char *method_start, int method_len, const char *httpver_start, int http_version_len, const char *resource_start, int resource_len)
+static Eupnp_HTTP_Request *
+eupnp_ssdp_http_request_new(const char *method_start, int method_len, const char *httpver_start, int http_version_len, const char *uri_start, int uri_len)
 {
-   Eupnp_HTTP_Message *h;
-   h = calloc(1, sizeof(Eupnp_HTTP_Message));
+   Eupnp_HTTP_Request *h;
+   h = calloc(1, sizeof(Eupnp_HTTP_Request));
 
    if (!h)
      {
@@ -129,20 +136,20 @@ eupnp_ssdp_http_message_new(const char *method_start, int method_len, const char
 
    h->method = eina_stringshare_add_length(method_start, method_len);
    h->http_version = eina_stringshare_add_length(httpver_start, http_version_len);
-   h->resource = eina_stringshare_add_length(resource_start, resource_len);
+   h->uri = eina_stringshare_add_length(uri_start, uri_len);
    return h;
 }
 
 
 static void
-eupnp_ssdp_http_message_free(Eupnp_HTTP_Message *m)
+eupnp_ssdp_http_request_free(Eupnp_HTTP_Request *m)
 {
    if (!m)
       return;
 
    eina_stringshare_del(m->method);
    eina_stringshare_del(m->http_version);
-   eina_stringshare_del(m->resource);
+   eina_stringshare_del(m->uri);
 
    if (m->headers)
      {
@@ -159,16 +166,16 @@ eupnp_ssdp_http_message_free(Eupnp_HTTP_Message *m)
    free(m);
 }
 
-static Eupnp_HTTP_Message *
+static Eupnp_HTTP_Request *
 eupnp_ssdp_datagram_parse(const char *buf)
 {
-   Eupnp_HTTP_Message *m;
+   Eupnp_HTTP_Request *m;
    const char *method;
    const char *httpver;
-   const char *resource;
+   const char *uri;
    const char *begin, *end;
    const char *vbegin, *vend;
-   int method_len, httpver_len, resource_len, klen, vlen;
+   int method_len, httpver_len, uri_len, klen, vlen;
    int i;
 
    /* Parse the HTTP request line */
@@ -183,16 +190,16 @@ eupnp_ssdp_datagram_parse(const char *buf)
 
    method_len = end - method;
 
-   /* Move our starting point to the resource */
-   resource = end + 1;
-   end = strchr(resource, ' ');
+   /* Move our starting point to the uri */
+   uri = end + 1;
+   end = strchr(uri, ' ');
 
    if (!end)
      {
 	ERROR("Could not parse HTTP request.\n");
 	return NULL;
      }
-   resource_len = end - resource;
+   uri_len = end - uri;
 
    httpver = end + 1;
    end = strstr(httpver, "\r\n");
@@ -205,7 +212,7 @@ eupnp_ssdp_datagram_parse(const char *buf)
 
    httpver_len = end - httpver;
 
-   m = eupnp_ssdp_http_message_new(method, method_len, resource, resource_len,
+   m = eupnp_ssdp_http_request_new(method, method_len, uri, uri_len,
 				   httpver, httpver_len);
 
    if (!m)
@@ -242,7 +249,7 @@ eupnp_ssdp_datagram_parse(const char *buf)
 
 	vlen = vend - vbegin;
 
-	if (!eupnp_ssdp_http_message_add_header(m, begin, klen, vbegin, vlen))
+	if (!eupnp_ssdp_http_request_header_add(m, begin, klen, vbegin, vlen))
 	  {
 	     WARN("out of memory parsing headers, skipping rest...\n");
 	     break;
@@ -285,6 +292,7 @@ eupnp_ssdp_init(void)
 
    _eupnp_ssdp_notify = (char *) eina_stringshare_add("NOTIFY");
    _eupnp_ssdp_msearch = (char *) eina_stringshare_add("M-SEARCH");
+   _eupnp_ssdp_http_version = (char *) eina_stringshare_add("HTTP/1.1");
 
    return ++_eupnp_ssdp_main_count;
 }
@@ -381,7 +389,7 @@ eupnp_ssdp_discovery_request_send(Eupnp_SSDP_Server *ssdp, int mx, char *search_
 void
 _eupnp_ssdp_on_datagram_available(Eupnp_SSDP_Server *ssdp)
 {
-   Eupnp_HTTP_Message *m;
+   Eupnp_HTTP_Request *m;
    Eupnp_UDP_Datagram *d;
 
    d = eupnp_udp_transport_recvfrom(ssdp->udp_sock);
@@ -413,5 +421,5 @@ _eupnp_ssdp_on_datagram_available(Eupnp_SSDP_Server *ssdp)
 	DEBUG("Received M-SEARCH request\n'");
      }
 
-   eupnp_ssdp_http_message_free(m);
+   eupnp_ssdp_http_request_free(m);
 }

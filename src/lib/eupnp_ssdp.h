@@ -35,11 +35,16 @@
                                     "MX: %d\r\n"                  \
                                     "ST: %s\r\n\r\n"              \
 
+#define EUPNP_SSDP_NOTIFY_ALIVE "ssdp:alive"
+#define EUPNP_SSDP_NOTIFY_BYEBYE "ssdp:byebye"
+
 /* 
  * Shared strings, retrieve it with stringshare{ref|add}
  */
 char *_eupnp_ssdp_notify;
 char *_eupnp_ssdp_msearch;
+char *_eupnp_ssdp_http_version;
+
 
 typedef struct _Eupnp_SSDP_Server Eupnp_SSDP_Server;
 
