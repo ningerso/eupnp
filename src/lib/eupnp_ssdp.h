@@ -38,7 +38,10 @@
 #define EUPNP_SSDP_NOTIFY_ALIVE "ssdp:alive"
 #define EUPNP_SSDP_NOTIFY_BYEBYE "ssdp:byebye"
 
-/* 
+#define EUPNP_SSDP_HTTP_VERSION "HTTP/1.1"
+#define EUPNP_SSDP_HTTP_VERSION_LEN 8
+
+/*
  * Shared strings, retrieve it with stringshare{ref|add}
  */
 char *_eupnp_ssdp_notify;

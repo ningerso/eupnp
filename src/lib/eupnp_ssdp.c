@@ -40,14 +40,15 @@ struct _Eupnp_HTTP_Header {
 struct _Eupnp_HTTP_Request {
    Eina_Array *headers;
    const char *method;
-   const char *http_version;
    const char *uri;
+   const char *http_version;
 };
 
 struct _Eupnp_HTTP_Response {
+   Eina_Array *headers;
    const char *http_version;
-   int status_code;
    const char *reason_phrase;
+   int status_code;
 };
 
 typedef struct _Eupnp_HTTP_Request Eupnp_HTTP_Request;
@@ -55,6 +56,7 @@ typedef struct _Eupnp_HTTP_Response Eupnp_HTTP_Response;
 typedef struct _Eupnp_HTTP_Header Eupnp_HTTP_Header;
 
 static int _eupnp_ssdp_main_count = 0;
+
 
 static Eupnp_HTTP_Header *
 eupnp_ssdp_http_header_new(const char *key_start, int key_len, const char *value_start, int value_len)
@@ -101,7 +103,29 @@ eupnp_ssdp_http_request_header_add(Eupnp_HTTP_Request *m, const char *key_start,
 	return EINA_FALSE;
      }
 
-   DEBUG("Header parsed: %s: %s\n", h->key, h->value);
+   if (!eina_array_push(m->headers, h))
+     {
+	WARN("incomplete headers\n");
+	eupnp_ssdp_http_header_free(h);
+	return EINA_FALSE;
+     }
+
+   return EINA_TRUE;
+}
+
+static Eina_Bool
+eupnp_ssdp_http_response_header_add(Eupnp_HTTP_Response *m, const char *key_start, int key_len, const char *value_start, int value_len)
+{
+   Eupnp_HTTP_Header *h;
+
+   h = eupnp_ssdp_http_header_new(key_start, key_len, value_start, value_len);
+
+   if (!h)
+     {
+	eina_error_set(EINA_ERROR_OUT_OF_MEMORY);
+	ERROR("header alloc error.\n");
+	return EINA_FALSE;
+     }
 
    if (!eina_array_push(m->headers, h))
      {
@@ -114,7 +138,7 @@ eupnp_ssdp_http_request_header_add(Eupnp_HTTP_Request *m, const char *key_start,
 }
 
 static Eupnp_HTTP_Request *
-eupnp_ssdp_http_request_new(const char *method_start, int method_len, const char *httpver_start, int http_version_len, const char *uri_start, int uri_len)
+eupnp_ssdp_http_request_new(const char *method_start, int method_len, const char *uri_start, int uri_len, const char *httpver_start, int httpver_len)
 {
    Eupnp_HTTP_Request *h;
    h = calloc(1, sizeof(Eupnp_HTTP_Request));
@@ -131,12 +155,43 @@ eupnp_ssdp_http_request_new(const char *method_start, int method_len, const char
    if (!h->headers)
      {
 	ERROR("Could not allocate memory for HTTP headers table.\n");
+	free(h);
 	return NULL;
      }
 
    h->method = eina_stringshare_add_length(method_start, method_len);
-   h->http_version = eina_stringshare_add_length(httpver_start, http_version_len);
+
+   if (!h->method)
+     {
+	ERROR("Could not stringshare HTTP request method.\n");
+	eina_array_free(h->headers);
+	free(h);
+	return NULL;
+     }
+
+   h->http_version = eina_stringshare_add_length(httpver_start, httpver_len);
+
+   if (!h->http_version)
+     {
+	ERROR("Could not stringshare HTTP request version.\n");
+	eina_array_free(h->headers);
+	eina_stringshare_del(h->method);
+	free(h);
+	return NULL;
+     }
+
    h->uri = eina_stringshare_add_length(uri_start, uri_len);
+
+   if (!h->uri)
+     {
+	ERROR("Could not stringshare HTTP request URI.\n");
+	eina_array_free(h->headers);
+	eina_stringshare_del(h->method);
+	eina_stringshare_del(h->http_version);
+	free(h);
+	return NULL;
+     }
+
    return h;
 }
 
@@ -147,9 +202,12 @@ eupnp_ssdp_http_request_free(Eupnp_HTTP_Request *m)
    if (!m)
       return;
 
-   eina_stringshare_del(m->method);
-   eina_stringshare_del(m->http_version);
-   eina_stringshare_del(m->uri);
+   if (m->method)
+      eina_stringshare_del(m->method);
+   if (m->http_version)
+      eina_stringshare_del(m->http_version);
+   if (m->uri)
+      eina_stringshare_del(m->uri);
 
    if (m->headers)
      {
@@ -166,100 +224,346 @@ eupnp_ssdp_http_request_free(Eupnp_HTTP_Request *m)
    free(m);
 }
 
-static Eupnp_HTTP_Request *
-eupnp_ssdp_datagram_parse(const char *buf)
+static void
+eupnp_ssdp_http_request_dump(Eupnp_HTTP_Request *r)
 {
-   Eupnp_HTTP_Request *m;
-   const char *method;
-   const char *httpver;
-   const char *uri;
+   if (!r)
+      return;
+
+   DEBUG("Dumping HTTP request\n");
+   if (r->method)
+      DEBUG("* Method: %s\n", r->method);
+   if (r->uri)
+      DEBUG("* URI: %s\n", r->uri);
+   if (r->http_version)
+      DEBUG("* HTTP Version: %s\n", r->http_version);
+
+   if (r->headers)
+     {
+	Eina_Array_Iterator it;
+	Eupnp_HTTP_Header *h;
+	int i;
+
+	EINA_ARRAY_ITER_NEXT(r->headers, i, h, it)
+	   DEBUG("** %s: %s\n", h->key, h->value);
+     }
+}
+
+
+static Eupnp_HTTP_Response *
+eupnp_ssdp_http_response_new(const char *httpver_start, int httpver_len, const char *status_code, int status_code_len, const char *reason_phrase, int reason_phrase_len)
+{
+   Eupnp_HTTP_Response *r;
+   r = calloc(1, sizeof(Eupnp_HTTP_Response));
+
+   if (!r)
+     {
+	eina_error_set(EINA_ERROR_OUT_OF_MEMORY);
+	ERROR("Could not create HTTP response.\n");
+	return NULL;
+     }
+
+   r->headers = eina_array_new(10);
+
+   if (!r->headers)
+     {
+	ERROR("Could not allocate memory for HTTP headers.\n");
+	free(r);
+	return NULL;
+     }
+
+   r->http_version = eina_stringshare_add_length(httpver_start, httpver_len);
+
+   if (!r->http_version)
+     {
+	ERROR("Could not stringshare http response version.\n");
+	eina_array_free(r->headers);
+	free(r);
+	return NULL;
+     }
+
+   r->status_code = strtol(status_code, NULL, 10);
+   r->reason_phrase = eina_stringshare_add_length(reason_phrase,
+						    reason_phrase_len);
+
+   if (!r->reason_phrase)
+     {
+	ERROR("Could not stringshare http response phrase.\n");
+	eina_array_free(r->headers);
+	eina_stringshare_del(r->http_version);
+	free(r);
+	return NULL;
+     }
+
+   return r;
+}
+
+static void
+eupnp_ssdp_http_response_free(Eupnp_HTTP_Response *r)
+{
+   if (!r) return;
+
+   if (r->http_version)
+      eina_stringshare_del(r->http_version);
+   if (r->reason_phrase)
+      eina_stringshare_del(r->reason_phrase);
+
+   if (r->headers)
+     {
+	Eina_Array_Iterator it;
+	Eupnp_HTTP_Header *h;
+	int i;
+
+	EINA_ARRAY_ITER_NEXT(r->headers, i, h, it)
+	   eupnp_ssdp_http_header_free(h);
+
+	eina_array_free(r->headers);
+     }
+
+   free(r);
+}
+
+static void
+eupnp_ssdp_http_response_dump(Eupnp_HTTP_Response *r)
+{
+   if (!r)
+      return;
+
+   DEBUG("Dumping HTTP response\n");
+   if (r->http_version)
+      DEBUG("* HTTP Version: %s\n", r->http_version);
+   if (r->status_code)
+      DEBUG("* Status Code: %d\n", r->status_code);
+   if (r->reason_phrase)
+      DEBUG("* Reason Phrase: %s\n", r->reason_phrase);
+
+   if (r->headers)
+     {
+	Eina_Array_Iterator it;
+	Eupnp_HTTP_Header *h;
+	int i;
+
+	EINA_ARRAY_ITER_NEXT(r->headers, i, h, it)
+	   DEBUG("** %s: %s\n", h->key, h->value);
+     }
+}
+
+static Eina_Bool
+eupnp_ssdp_datagram_line_parse(const char *buf, const char **headers_start, const char **a, int *a_len, const char **b, int *b_len, const char **c, int *c_len)
+{
+   /*
+    * Parse first line of the form "a SP b SP c\r\n"
+    */
    const char *begin, *end;
    const char *vbegin, *vend;
-   int method_len, httpver_len, uri_len, klen, vlen;
-   int i;
 
-   /* Parse the HTTP request line */
-   method = buf;
-   end = strchr(method, ' ');
+   *a = buf;
+   end = strchr(*a, ' ');
 
    if (!end)
      {
-	ERROR("Could not parse HTTP method.\n");
-	return NULL;
+	ERROR("Could not parse DATAGRAM.\n");
+	return EINA_FALSE;
      }
 
-   method_len = end - method;
+   *a_len = end - *a;
 
-   /* Move our starting point to the uri */
-   uri = end + 1;
-   end = strchr(uri, ' ');
+   /* Move our starting point to b */
+   *b = end + 1;
+   end = strchr(*b, ' ');
 
    if (!end)
      {
-	ERROR("Could not parse HTTP request.\n");
-	return NULL;
+	ERROR("Could not parse HTTP.\n");
+	return EINA_FALSE;
      }
-   uri_len = end - uri;
 
-   httpver = end + 1;
-   end = strstr(httpver, "\r\n");
+   *b_len = end - *b;
+   *c = end + 1;
+   end = strstr(*c, "\r\n");
 
    if (!end)
      {
 	ERROR("Could not parse HTTP request.\n");
-	return NULL;
+	return EINA_FALSE;
      }
 
-   httpver_len = end - httpver;
+   *c_len = end - *c;
+   *headers_start = end + 2;
 
-   m = eupnp_ssdp_http_request_new(method, method_len, uri, uri_len,
-				   httpver, httpver_len);
-
-   if (!m)
-     {
-	ERROR("Could not create HTTP message.\n");
-	return NULL;
-     }
-
-   /* Parse the available headers */
-   begin = end + 2;
-
-   while (begin != NULL)
-     {
-	/*
-	 * TODO add payload support by checking presence of doubled "\r\n"
-	 */
-
-	/* Header name */
-	end = strchr(begin, ':');
-	if (!end) break;
-	klen = end - begin;
-
-	/* Header value */
-	vbegin = end + 2;
-	vend = strstr(vbegin, "\r\n");
-
-	if (!vend)
-	  {
-	     /* Malformed header not ending in \r\n. If couldn't find \r\n, also
-	      * means that there are no more headers forward.
-	      */
-	     break;
-	  }
-
-	vlen = vend - vbegin;
-
-	if (!eupnp_ssdp_http_request_header_add(m, begin, klen, vbegin, vlen))
-	  {
-	     WARN("out of memory parsing headers, skipping rest...\n");
-	     break;
-	  }
-
-	begin = vend + 2;
-     }
-
-   return m;
+   return EINA_TRUE;
 }
+
+static Eina_Bool
+eupnp_ssdp_datagram_header_next_parse(const char **line_start, const char **hkey, int *hkey_len, const char **hvalue, int *hvalue_len)
+{
+   const char *end;
+
+   if (!line_start)
+      return EINA_FALSE;
+
+   *hkey = *line_start;
+
+   // Find first ':'. Do not trim spaces between the key and ':' - not on
+   // RFC2616.
+   end = strchr(*hkey, ':');
+
+   if (!end)
+     {
+	*line_start = NULL;
+	return EINA_FALSE;
+     }
+
+   *hkey_len = end - *hkey;
+
+   // Move to the first char after ':' and check if the header value is empty.
+   *hvalue = end + 1;
+
+   if (**hvalue == '\r' && *(*hvalue+1) == '\n')
+     {
+	DEBUG("Empty header value!\n");
+	*line_start = *hvalue + 2;
+	*hvalue_len = 0;
+	return EINA_TRUE;
+     }
+
+   // Header value not empty, skip whitespaces before the actual value.
+   while (**hvalue == ' ') (*hvalue)++;
+
+   if (**hvalue == '\r' && *(*hvalue+1) == '\n')
+     {
+	DEBUG("Empty header value!\n");
+	*line_start = *hvalue + 2;
+	*hvalue_len = 0;
+	return EINA_TRUE;
+     }
+
+   // Mark value and skip possible whitespaces between value and \r\n
+   end = *hvalue;
+
+   while (*(end+1) != '\r') end++;
+
+   if (*(end+2) != '\n')
+     {
+	ERROR("Header parsing error: character after carrier is not \\n\n");
+	return EINA_FALSE;
+     }
+
+   *hvalue_len = end - *hvalue + 1;
+
+   /* Set line_start for next header */
+   *line_start = end + 3;
+
+   return EINA_TRUE;
+}
+
+static Eina_Bool
+eupnp_ssdp_http_message_is_response(const char *buf)
+{
+   if (!strncmp(buf, _eupnp_ssdp_http_version, EUPNP_SSDP_HTTP_VERSION_LEN))
+      return EINA_TRUE;
+   return EINA_FALSE;
+}
+
+static Eupnp_HTTP_Request *
+eupnp_ssdp_http_request_parse(const char *buf)
+{
+   Eupnp_HTTP_Request *r;
+   const char *method;
+   const char *uri;
+   const char *http_version;
+   const char *headers_start, *next_header;
+   const char *hkey_begin, *hv_begin;
+   int method_len, uri_len, httpver_len;
+   int hk_len, hv_len;
+
+   if (!eupnp_ssdp_datagram_line_parse(buf, &headers_start, &method, &method_len, &uri, &uri_len, &http_version, &httpver_len))
+     {
+	ERROR("Could not parse request line.\n");
+	return NULL;
+     }
+
+   r = eupnp_ssdp_http_request_new(method, method_len, uri, uri_len,
+				   http_version, httpver_len);
+
+   if (!r)
+     {
+	ERROR("Could not create new HTTP request.\n");
+	return NULL;
+     }
+
+   next_header = headers_start;
+
+   while (next_header != NULL)
+     {
+	if (eupnp_ssdp_datagram_header_next_parse(&next_header, &hkey_begin, &hk_len, &hv_begin, &hv_len))
+	  {
+	     if (!eupnp_ssdp_http_request_header_add(r, hkey_begin, hk_len, hv_begin, hv_len))
+	       {
+		  ERROR("Could not add header to the request.\n");
+		  break;
+	       }
+	  }
+	else
+	  {
+	     DEBUG("Finished parsing headers.\n");
+	     break;
+	  }
+     }
+
+   return r;
+}
+
+
+static Eupnp_HTTP_Response *
+eupnp_ssdp_http_response_parse(const char *buf)
+{
+   Eupnp_HTTP_Response *r;
+   const char *reason_phrase;
+   const char *status_code;
+   const char *http_version;
+   const char *headers_start, *next_header;
+   const char *hkey_begin, *hv_begin;
+   int sc_len, rp_len, httpver_len;
+   int hk_len, hv_len;
+
+   if (!eupnp_ssdp_datagram_line_parse
+		(buf, &headers_start, &http_version, &httpver_len, &status_code,
+		 &sc_len, &reason_phrase, &rp_len))
+     {
+	ERROR("Could not parse request line.\n");
+	return NULL;
+     }
+
+   r = eupnp_ssdp_http_response_new(http_version, httpver_len, status_code,
+				    sc_len, reason_phrase, rp_len);
+
+   if (!r)
+     {
+	ERROR("Could not create new HTTP response.\n");
+	return NULL;
+     }
+
+   next_header = headers_start;
+
+   while (next_header != NULL)
+     {
+	if (eupnp_ssdp_datagram_header_next_parse(&next_header, &hkey_begin, &hk_len, &hv_begin, &hv_len))
+	  {
+	     if (!eupnp_ssdp_http_response_header_add(r, hkey_begin, hk_len, hv_begin, hv_len))
+	       {
+		  ERROR("Could not add header to the response.\n");
+		  break;
+	       }
+	  }
+	else
+	   break;
+     }
+
+   return r;
+}
+
+
 
 
 /*
@@ -292,7 +596,7 @@ eupnp_ssdp_init(void)
 
    _eupnp_ssdp_notify = (char *) eina_stringshare_add("NOTIFY");
    _eupnp_ssdp_msearch = (char *) eina_stringshare_add("M-SEARCH");
-   _eupnp_ssdp_http_version = (char *) eina_stringshare_add("HTTP/1.1");
+   _eupnp_ssdp_http_version = (char *) eina_stringshare_add(EUPNP_SSDP_HTTP_VERSION);
 
    return ++_eupnp_ssdp_main_count;
 }
@@ -393,6 +697,7 @@ _eupnp_ssdp_on_datagram_available(Eupnp_SSDP_Server *ssdp)
    Eupnp_UDP_Datagram *d;
 
    d = eupnp_udp_transport_recvfrom(ssdp->udp_sock);
+
    DEBUG("Message from %s:%d\n", d->host, d->port);
 
    if (!d)
@@ -401,25 +706,42 @@ _eupnp_ssdp_on_datagram_available(Eupnp_SSDP_Server *ssdp)
 	return;
      }
 
-   m = eupnp_ssdp_datagram_parse(d->data);
+   if (eupnp_ssdp_http_message_is_response(d->data))
+     {
+	DEBUG("Message is response!\n");
+
+	Eupnp_HTTP_Response *r;
+	r = eupnp_ssdp_http_response_parse(d->data);
+	eupnp_ssdp_http_response_dump(r);
+	eupnp_ssdp_http_response_free(r);
+     }
+   else
+     {
+	DEBUG("Message is request!\n");
+	Eupnp_HTTP_Request *m;
+	m = eupnp_ssdp_http_request_parse(d->data);
+
+	if (!m)
+	  {
+	     ERROR("Failed parsing request datagram\n");
+	     return;
+	  }
+
+	eupnp_ssdp_http_request_dump(m);
+
+	if (m->method == _eupnp_ssdp_notify)
+	  {
+	     // TODO Handle notify message (ssdp:alive or ssdp:byebye)
+	     DEBUG("Received NOTIFY request.\n");
+	  }
+	else if (m->method == _eupnp_ssdp_msearch)
+	  {
+	     // TODO Remove me.
+	     DEBUG("Received M-SEARCH request\n'");
+	  }
+
+	eupnp_ssdp_http_request_free(m);
+     }
+
    eupnp_udp_transport_datagram_free(d);
-
-   if (!m)
-     {
-	ERROR("Failed parsing request datagram\n");
-	return;
-     }
-
-   if (m->method == _eupnp_ssdp_notify)
-     {
-	// TODO Handle notify message (ssdp:alive or ssdp:byebye)
-	DEBUG("Received NOTIFY request.\n");
-     }
-   else if (m->method == _eupnp_ssdp_msearch)
-     {
-	// TODO Remove me.
-	DEBUG("Received M-SEARCH request\n'");
-     }
-
-   eupnp_ssdp_http_request_free(m);
 }
