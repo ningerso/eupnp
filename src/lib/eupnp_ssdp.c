@@ -712,6 +712,14 @@ _eupnp_ssdp_on_datagram_available(Eupnp_SSDP_Server *ssdp)
 
 	Eupnp_HTTP_Response *r;
 	r = eupnp_ssdp_http_response_parse(d->data);
+
+	if (!r)
+	  {
+	     ERROR("Failed parsing response datagram\n");
+	     eupnp_udp_transport_datagram_free(d);
+	     return;
+	  }
+
 	eupnp_ssdp_http_response_dump(r);
 	eupnp_ssdp_http_response_free(r);
      }
@@ -724,6 +732,7 @@ _eupnp_ssdp_on_datagram_available(Eupnp_SSDP_Server *ssdp)
 	if (!m)
 	  {
 	     ERROR("Failed parsing request datagram\n");
+	     eupnp_udp_transport_datagram_free(d);
 	     return;
 	  }
 
