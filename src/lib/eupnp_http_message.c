@@ -409,7 +409,7 @@ eupnp_http_request_dump(Eupnp_HTTP_Request *r)
  * @return On success returns EINA_TRUE, otherwise EINA_FALSE.
  */
 Eina_Bool
-eupnp_http_request_header_add(Eupnp_HTTP_Request *m, const char *key, int key_len, const char *value, int value_len)
+eupnp_http_request_header_add(Eupnp_HTTP_Request *r, const char *key, int key_len, const char *value, int value_len)
 {
    Eupnp_HTTP_Header *h;
 
@@ -422,7 +422,7 @@ eupnp_http_request_header_add(Eupnp_HTTP_Request *m, const char *key, int key_le
 	return EINA_FALSE;
      }
 
-   if (!eina_array_push(m->headers, h))
+   if (!eina_array_push(r->headers, h))
      {
 	WARN("incomplete headers\n");
 	eupnp_http_header_free(h);
@@ -444,13 +444,13 @@ eupnp_http_request_header_add(Eupnp_HTTP_Request *m, const char *key, int key_le
  * @return value of the header associated with the key or NULL if not found.
  */
 const char *
-eupnp_http_request_header_get(Eupnp_HTTP_Request *m, const char *key)
+eupnp_http_request_header_get(Eupnp_HTTP_Request *r, const char *key)
 {
-   if (!m) return NULL;
-   if (!m->headers) return NULL;
+   if (!r) return NULL;
+   if (!r->headers) return NULL;
    if (!key) return NULL;
 
-   return eupnp_http_header_get(m->headers, key);
+   return eupnp_http_header_get(r->headers, key);
 }
 
 /*
@@ -635,13 +635,13 @@ eupnp_http_response_header_add(Eupnp_HTTP_Response *r, const char *key, int key_
  * @return value of the header associated with the key or NULL if not found.
  */
 const char *
-eupnp_http_response_header_get(Eupnp_HTTP_Response *m, const char *key)
+eupnp_http_response_header_get(Eupnp_HTTP_Response *r, const char *key)
 {
-   if (!m) return NULL;
-   if (!m->headers) return NULL;
+   if (!r) return NULL;
+   if (!r->headers) return NULL;
    if (!key) return NULL;
 
-   return eupnp_http_header_get(m->headers, key);
+   return eupnp_http_header_get(r->headers, key);
 }
 
 /*
