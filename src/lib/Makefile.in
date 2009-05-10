@@ -54,7 +54,8 @@ libLTLIBRARIES_INSTALL = $(INSTALL)
 LTLIBRARIES = $(lib_LTLIBRARIES)
 libeupnp_la_DEPENDENCIES =
 am_libeupnp_la_OBJECTS = eupnp.lo eupnp_ssdp.lo eupnp_error.lo \
-	eupnp_udp_transport.lo eupnp_control_point.lo
+	eupnp_http_message.lo eupnp_udp_transport.lo \
+	eupnp_control_point.lo
 libeupnp_la_OBJECTS = $(am_libeupnp_la_OBJECTS)
 libeupnp_la_LINK = $(LIBTOOL) --tag=CC $(AM_LIBTOOLFLAGS) \
 	$(LIBTOOLFLAGS) --mode=link $(CCLD) $(AM_CFLAGS) $(CFLAGS) \
@@ -201,6 +202,7 @@ include_HEADERS = \
 	eupnp.h \
 	eupnp_ssdp.h \
 	eupnp_error.h \
+	eupnp_http_message.h \
 	eupnp_udp_transport.h \
 	eupnp_control_point.h
 
@@ -208,6 +210,7 @@ libeupnp_la_SOURCES = \
 	eupnp.c \
 	eupnp_ssdp.c \
 	eupnp_error.c \
+	eupnp_http_message.c \
 	eupnp_udp_transport.c \
 	eupnp_control_point.c
 
@@ -285,6 +288,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eupnp.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eupnp_control_point.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eupnp_error.Plo@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eupnp_http_message.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eupnp_ssdp.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/eupnp_udp_transport.Plo@am__quote@
 
