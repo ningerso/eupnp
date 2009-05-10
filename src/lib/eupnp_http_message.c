@@ -161,7 +161,8 @@ eupnp_http_datagram_header_next_parse(const char **line_start, const char **hkey
  * Constructor for the Eupnp_HTTP_Header structure
  *
  * Receives pointers to key and value starting points and the length that will
- * be copied from that point on (length).
+ * be copied from that point on (length). The key will be automatically
+ * converted to lowercase.
  *
  * @param key starting point of the key
  * @param key_len key length
@@ -191,6 +192,17 @@ eupnp_http_header_new(const char *key, int key_len, const char *value, int value
    memcpy((void *)h->value, value, value_len);
    ((char *) h->key)[key_len] = '\0';
    ((char *) h->value)[value_len] = '\0';
+
+   /*
+    * Make key lowercase - no need to care about case insensitive.
+    */
+   char *p = (char *) h->key;
+
+   while (*p != '\0')
+     {
+	*p = tolower(*p);
+	(p)++;
+     }
 
    return h;
 }
