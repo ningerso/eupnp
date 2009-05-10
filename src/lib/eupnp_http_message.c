@@ -221,6 +221,34 @@ eupnp_http_header_free(Eupnp_HTTP_Header *h)
 }
 
 /*
+ * Retrieves the header value associated with the key
+ *
+ * Returns the header value for the given key, if the header is present on the
+ * array passed. Key given must be lowercase.
+ *
+ * @param headers headers array
+ * @param key key to search for
+ *
+ * @return value of the header associated with the key or NULL if not found.
+ */
+const char *
+eupnp_http_header_get(Eina_Array *headers, const char *key)
+{
+   if (!headers) return NULL;
+   if (!key) return NULL;
+
+   Eina_Array_Iterator it;
+   int i;
+   Eupnp_HTTP_Header *h;
+
+   EINA_ARRAY_ITER_NEXT(headers, i, h, it)
+      if (!strcmp(h->key, key))
+	return h->value;
+
+   return NULL;
+}
+
+/*
  * Constructor for the Eupnp_HTTP_Request structure
  *
  * Receives pointers to starting points and lengths of the method, uri
@@ -404,6 +432,26 @@ eupnp_http_request_header_add(Eupnp_HTTP_Request *m, const char *key, int key_le
    return EINA_TRUE;
 }
 
+/*
+ * Retrieves the header value associated with the key of a HTTP request
+ *
+ * Returns the header value for the given key, if the header is present on the
+ * given HTTP request. Key given must be lowercase.
+ *
+ * @param m HTTP request
+ * @param key key to search for
+ *
+ * @return value of the header associated with the key or NULL if not found.
+ */
+const char *
+eupnp_http_request_header_get(Eupnp_HTTP_Request *m, const char *key)
+{
+   if (!m) return NULL;
+   if (!m->headers) return NULL;
+   if (!key) return NULL;
+
+   return eupnp_http_header_get(m->headers, key);
+}
 
 /*
  * Constructor for the Eupnp_HTTP_Response structure
@@ -575,6 +623,26 @@ eupnp_http_response_header_add(Eupnp_HTTP_Response *r, const char *key, int key_
    return EINA_TRUE;
 }
 
+/*
+ * Retrieves the header value associated with the key of a HTTP response
+ *
+ * Returns the header value for the given key, if the header is present on the
+ * given HTTP response. Key given must be lowercase.
+ *
+ * @param m HTTP response
+ * @param key key to search for
+ *
+ * @return value of the header associated with the key or NULL if not found.
+ */
+const char *
+eupnp_http_response_header_get(Eupnp_HTTP_Response *m, const char *key)
+{
+   if (!m) return NULL;
+   if (!m->headers) return NULL;
+   if (!key) return NULL;
+
+   return eupnp_http_header_get(m->headers, key);
+}
 
 /*
  * Checks if a message type is response

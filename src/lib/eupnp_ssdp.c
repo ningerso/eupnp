@@ -161,8 +161,8 @@ eupnp_ssdp_discovery_request_send(Eupnp_SSDP_Server *ssdp, int mx, char *search_
 void
 _eupnp_ssdp_on_datagram_available(Eupnp_SSDP_Server *ssdp)
 {
-   Eupnp_HTTP_Request *m;
    Eupnp_UDP_Datagram *d;
+   const char *tmp;
 
    d = eupnp_udp_transport_recvfrom(ssdp->udp_sock);
 
@@ -215,6 +215,11 @@ _eupnp_ssdp_on_datagram_available(Eupnp_SSDP_Server *ssdp)
 	  {
 	     // TODO Remove me.
 	     DEBUG("Received M-SEARCH request\n'");
+	     tmp = eupnp_http_request_header_get(m, "st");
+
+	     if (tmp)
+		DEBUG("Search Target is %s\n", tmp);
+
 	  }
 
 	eupnp_http_request_free(m);
